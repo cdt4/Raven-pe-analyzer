@@ -178,16 +178,11 @@ class RavenGUI(QMainWindow):
         self.toolbar = self.addToolBar('Main Toolbar')
         
         # Create actions
-        open_action = QAction('Open', self)
-        open_action.setShortcut('Ctrl+O')
-        open_action.triggered.connect(self.browse_file)
-        
         export_action = QAction('Export', self)
         export_action.setShortcut('Ctrl+E')
         export_action.triggered.connect(self.export_analysis)
         
         # Add actions to toolbar
-        self.toolbar.addAction(open_action)
         self.toolbar.addAction(export_action)
         
         # Central widget
@@ -496,10 +491,21 @@ class RavenGUI(QMainWindow):
         # Update findings
         findings = []
         
+        # Risk score and factors
+        risk_score = self.analyzer.analysis_results.get('risk_score', 0)
+        risk_factors = self.analyzer.analysis_results.get('risk_factors', [])
+        
+        if risk_score > 0:
+            findings.append(f"<b style='color: blue;'>Risk Score:</b> {risk_score}")
+            if risk_factors:
+                findings.append("<b style='color: blue;'>Risk Factors:</b>")
+                for factor in risk_factors:
+                    findings.append(f"• {factor}")
+        
         # Suspicious findings
         suspicious = self.analyzer.analysis_results.get('suspicious_findings', [])
         if suspicious:
-            findings.append("<b style='color: red;'>Suspicious Findings:</b>")
+            findings.append("<br><b style='color: red;'>Suspicious Findings:</b>")
             for finding in suspicious:
                 findings.append(f"• {finding.get('message', 'Unknown finding')}")
         
