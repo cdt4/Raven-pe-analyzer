@@ -6,6 +6,7 @@ import json
 import math
 import re
 from datetime import datetime
+import datetime
 import hashlib
 import zlib
 import struct
@@ -153,39 +154,145 @@ class RiskAssessor:
     
     @staticmethod
     def calculate_risk(analysis):
-        """Calculate heuristic risk rating"""
+        """Calculate heuristic risk rating with improved accuracy"""
         risk_score = 0
+        risk_factors = []
         
-        # High entropy sections
+        # Basic file info checks
+        basic_info = analysis.get('basic_info', {})
+        
+        # Check for suspicious compilation timestamp
+        timestamp = basic_info.get('compilation_timestamp', 0)
+        if timestamp == 0 or timestamp < 946684800:  # Before year 2000
+            risk_score += 1
+            risk_factors.append("Suspicious or missing compilation timestamp")
+        
+        # High entropy sections (more selective)
+        high_entropy_sections = 0
         for section in analysis.get('sections', []):
-            if section.get('is_suspicious', False):
-                risk_score += 2
+            if section.get('entropy', 0) > 7.8:  # Increased threshold
+                high_entropy_sections += 1
         
-        # Suspicious imports
-        risk_score += len(analysis.get('suspicious_imports', []))
+        if high_entropy_sections >= 2:
+            risk_score += 4  # Multiple high entropy sections is very suspicious
+            risk_factors.append(f"Multiple high entropy sections ({high_entropy_sections})")
+        elif high_entropy_sections == 1:
+            risk_score += 1  # Single high entropy section could be legitimate
+            risk_factors.append("Single high entropy section")
         
-        # Packer detection
+        # Suspicious imports (weighted by severity)
+        critical_apis = 0
+        suspicious_apis = 0
+        
+        for imp in analysis.get('suspicious_imports', []):
+            func_name = imp.get('function', '')
+            dll_name = imp.get('dll', '')
+            
+            # Critical APIs that are almost always malicious
+            critical_api_patterns = [
+                'CreateRemoteThread', 'WriteProcessMemory', 'NtCreateThreadEx',
+                'VirtualAllocEx', 'NtAllocateVirtualMemory', 'RtlCreateUserThread',
+                'SetWindowsHookEx', 'GetAsyncKeyState', 'BlockInput'
+            ]
+            
+            if any(api in func_name for api in critical_api_patterns):
+                critical_apis += 1
+            else:
+                suspicious_apis += 1
+        
+        risk_score += critical_apis * 3  # Critical APIs get high weight
+        risk_score += min(suspicious_apis, 5)  # Cap suspicious APIs to avoid over-scoring
+        
+        if critical_apis > 0:
+            risk_factors.append(f"Critical malware-associated APIs ({critical_apis})")
+        if suspicious_apis > 0:
+            risk_factors.append(f"Suspicious APIs ({suspicious_apis})")
+        
+        # Packer detection (more nuanced)
+        packer_signatures = 0
+        packer_patterns = 0
+        
         for finding in analysis.get('suspicious_findings', []):
-            if finding['type'] in ['packer_signature', 'packer_pattern']:
-                risk_score += 3
+            if finding['type'] == 'packer_signature':
+                packer_signatures += 1
+            elif finding['type'] == 'packer_pattern':
+                packer_patterns += 1
         
-        # Overlay data
+        if packer_signatures > 0:
+            risk_score += 3  # Known packer signatures are concerning
+            risk_factors.append(f"Known packer signatures ({packer_signatures})")
+        elif packer_patterns > 0:
+            risk_score += 1  # Generic patterns are less concerning
+            risk_factors.append(f"Generic packer patterns ({packer_patterns})")
+        
+        # Overlay data (context-dependent)
         if analysis.get('overlay'):
+            overlay_size = analysis['overlay'].get('size', 0)
+            if overlay_size > 1024 * 1024:  # Large overlay (>1MB) is more suspicious
+                risk_score += 2
+                risk_factors.append(f"Large overlay data ({overlay_size} bytes)")
+            else:
+                risk_score += 0.5  # Small overlay might be legitimate
+                risk_factors.append(f"Small overlay data ({overlay_size} bytes)")
+        
+        # Suspicious strings (weighted and capped)
+        strings_data = analysis.get('strings', {})
+        
+        # High-risk string types
+        crypto_wallets = len(strings_data.get('crypto_wallet', []))
+        if crypto_wallets > 0:
+            risk_score += crypto_wallets * 2
+            risk_factors.append(f"Cryptocurrency wallets found ({crypto_wallets})")
+        
+        # Medium-risk string types (capped to avoid over-scoring)
+        suspicious_strings = min(len(strings_data.get('suspicious', [])), 10)
+        external_urls = min(len(strings_data.get('url', [])), 5)
+        ip_addresses = min(len(strings_data.get('ip_address', [])), 3)
+        
+        risk_score += suspicious_strings * 0.3
+        risk_score += external_urls * 0.5
+        risk_score += ip_addresses * 0.7
+        
+        if suspicious_strings > 5:
+            risk_factors.append(f"Many suspicious strings ({len(strings_data.get('suspicious', []))})")
+        if external_urls > 2:
+            risk_factors.append(f"Multiple external URLs ({len(strings_data.get('url', []))})")
+        if ip_addresses > 1:
+            risk_factors.append(f"Hard-coded IP addresses ({len(strings_data.get('ip_address', []))})")
+        
+        # Structural anomalies
+        anomaly_count = len(analysis.get('anomalies', []))
+        if anomaly_count > 3:
             risk_score += 2
+            risk_factors.append(f"Multiple structural anomalies ({anomaly_count})")
+        elif anomaly_count > 0:
+            risk_score += 0.5
+            risk_factors.append(f"Structural anomalies ({anomaly_count})")
         
-        # Suspicious strings
-        risk_score += len(analysis.get('strings', {}).get('suspicious', []))
-        risk_score += len(analysis.get('strings', {}).get('url', []))
-        risk_score += len(analysis.get('strings', {}).get('executable', []))
-        risk_score += len(analysis.get('strings', {}).get('ip_address', []))
-        risk_score += len(analysis.get('strings', {}).get('crypto_wallet', []))
+        # Legitimate software indicators (reduce score)
+        exports = analysis.get('exports', {}).get('functions', [])
+        if len(exports) > 10:  # Libraries often have many exports
+            risk_score -= 1
+            risk_factors.append(f"Library-like exports ({len(exports)})")
         
-        # Determine risk level
-        if risk_score >= 15:
+        # Digital signature check (would need to be implemented)
+        # For now, assume unsigned binaries are slightly more risky
+        # This could be enhanced with actual signature verification
+        
+        # Final risk calculation with more reasonable thresholds
+        # Convert to integer to avoid floating point in comparisons
+        final_score = int(risk_score)
+        
+        # Store risk factors for detailed reporting
+        analysis['risk_factors'] = risk_factors
+        analysis['risk_score'] = final_score
+        
+        # More balanced thresholds
+        if final_score >= 12:  # Increased from 15
             return 'Critical'
-        elif risk_score >= 10:
+        elif final_score >= 7:   # Increased from 10
             return 'High'
-        elif risk_score >= 5:
+        elif final_score >= 3:   # Decreased from 5
             return 'Medium'
         else:
             return 'Low'
@@ -750,9 +857,9 @@ class PEAnalyzer:
             import ssdeep
             return ssdeep.hash(data)
         except ImportError:
-            return "ssdeep not available"
-        except Exception:
-            return "Error calculating ssdeep"
+            return "ssdeep module not available - install with: pip install ssdeep"
+        except Exception as e:
+            return f"Error calculating ssdeep: {str(e)}"
     
     def analyze_basic_info(self):
         """Analyze basic PE file information"""
@@ -762,7 +869,7 @@ class PEAnalyzer:
         # Convert timestamp to human readable format
         timestamp = self.pe.FILE_HEADER.TimeDateStamp
         try:
-            compile_time = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+            compile_time = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
         except:
             compile_time = f"Invalid timestamp (0x{timestamp:X})"
         
@@ -831,7 +938,7 @@ class PEAnalyzer:
                     'characteristics': section.Characteristics,
                     'characteristics_human': self.get_section_characteristics(section.Characteristics),
                     'entropy': entropy,
-                    'is_suspicious': entropy > 7.5,
+                    'is_suspicious': entropy > 7.8,  # Match with risk assessment threshold
                     'anomalies': anomalies
                 }
                 
@@ -842,7 +949,7 @@ class PEAnalyzer:
                         'type': 'high_entropy_section',
                         'section': section_name,
                         'entropy': entropy,
-                        'message': "High entropy section detected - possibly packed or encrypted"
+                        'message': f"High entropy section detected ({entropy:.2f}) - possibly packed or encrypted"
                     })
                 
                 if anomalies:
