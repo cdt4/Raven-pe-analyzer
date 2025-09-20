@@ -1,4 +1,4 @@
-# Raven 
+# Raven EXE Deconstructor
 ### Paranoid PE File Analysis Tool for Windows Executables
 
 ---
@@ -166,7 +166,7 @@ File Paths: Drop locations or install targets
 ### A: Because it uses techniques malware also uses. Raven flags the technique, not the intent.
 
 ### Q: Should I delete everything marked Critical?
-### A: No! Raven will mark things as critical alot its very sensetive. Context is important is this a random exe you found on your desktop? or is it the discord installer
+### A: No! Raven will mark things as critical Even when they may not be malware. Context is important is this a random exe you found on your desktop? or is it the discord installer
 
 ### Q: What makes Raven different?
 ### A: Its made by my pet goldfish theodore
@@ -198,4 +198,5 @@ I may update it in the future to use rust but thats a long way away
 ### Always verify with multiple sources before acting.
 
 ### A suspicious rating means “investigate further,” not “definitely malicious.”
+
 
