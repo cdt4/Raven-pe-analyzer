@@ -3,7 +3,7 @@
 
 ---
 
-## 🔎 Overview
+##  Overview
 Raven is an advanced **static analysis tool** for dissecting Windows PE (Portable Executable) files with a **paranoid, security-first mindset**.  
 It assumes *everything* is suspicious until proven otherwise.
 
@@ -11,7 +11,7 @@ It assumes *everything* is suspicious until proven otherwise.
 
 ---
 
-## ✨ Features
+##  Features
 
 ### Deep Static Analysis
 - **PE Structure Analysis**: Complete dissection of PE headers, sections, and metadata  
@@ -40,7 +40,7 @@ It assumes *everything* is suspicious until proven otherwise.
 
 ---
 
-## ⚙️ Installation
+##  Installation
 
 ### Requirements
 
